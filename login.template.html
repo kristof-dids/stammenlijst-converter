@@ -56,6 +56,10 @@ button:disabled{opacity:.6; cursor:wait;}
   <div class="fine">Je bestanden worden in je eigen browser verwerkt en nooit naar een server verstuurd.</div>
 </main>
 <script>
+// Decryption needs a secure context: send plain-http visitors to https first
+if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(location.hostname)) {
+  location.replace("https:" + location.href.slice(location.protocol.length));
+}
 // The app below is AES-256-GCM encrypted with a key derived from the password (PBKDF2-SHA256).
 // Without the password the published page holds nothing readable; with it, the browser decrypts
 // the app and shows it in place of this login screen. The derived key is kept for this tab only.
