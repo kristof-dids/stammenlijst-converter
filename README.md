@@ -11,7 +11,10 @@ GitHub Pages is statische hosting zonder server, dus een login kan niet op de se
 Daarom is de app zelf **versleuteld** (AES-256-GCM, sleutel afgeleid van het wachtwoord met
 PBKDF2-SHA256, 600.000 iteraties). `index.html` bevat alleen de inlogpagina en de versleutelde app;
 zonder wachtwoord is er niets leesbaars. Na het juiste wachtwoord ontsleutelt de browser de app.
-De sleutel blijft enkel bewaard zolang het tabblad open is.
+Standaard blijft de sleutel enkel bewaard zolang het tabblad open is (sessionStorage). Met
+**Onthoud mij op dit toestel** wordt de afgeleide sleutel in localStorage bewaard, zodat je niet
+opnieuw hoeft in te loggen. Het wachtwoord zelf wordt nooit opgeslagen. **Afmelden** rechtsboven
+wist de bewaarde sleutel.
 
 De leesbare broncode staat **niet** in deze repository.
 
@@ -27,7 +30,8 @@ STAMMENLIJST_PASSWORD='nieuw-of-hetzelfde-wachtwoord' node build.mjs "<pad naar 
 git add index.html && git commit -m "Update webdemo" && git push
 ```
 
-Elke build gebruikt een nieuwe salt en IV; wie nog ingelogd was, moet opnieuw inloggen.
+Zolang het wachtwoord hetzelfde blijft, hergebruikt de build de salt: onthouden logins blijven
+geldig. Bij een nieuw wachtwoord komt er een nieuwe salt en moet iedereen opnieuw inloggen.
 
 ## Bestanden
 

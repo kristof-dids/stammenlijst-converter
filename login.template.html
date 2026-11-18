@@ -34,6 +34,8 @@ label{display:block; font-size:.75rem; font-weight:600; text-transform:uppercase
 input{width:100%; font:inherit; font-size:.95rem; padding:10px 12px; border:1px solid var(--border-strong); border-radius:8px;
   background:var(--surface); color:var(--ink);}
 input:focus-visible, button:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+.remember{display:flex; align-items:center; gap:8px; margin-top:14px; font-size:.85rem; color:var(--ink); cursor:pointer; text-transform:none; letter-spacing:0; font-weight:400;}
+.remember input{width:16px; height:16px; margin:0; accent-color:var(--accent);}
 button{margin-top:16px; width:100%; font:inherit; font-weight:600; font-size:.92rem; padding:11px 16px; border-radius:8px;
   border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink); cursor:pointer;}
 button:hover{background:var(--accent-strong); border-color:var(--accent-strong);}
@@ -45,15 +47,16 @@ button:disabled{opacity:.6; cursor:wait;}
 <body>
 <main class="card">
   <svg class="mark" viewBox="0 0 40 40" fill="none" aria-hidden="true"><circle cx="20" cy="20" r="15.5" stroke="currentColor" stroke-width="1.6"/><circle cx="20" cy="20" r="10" stroke="currentColor" stroke-width="1.4" opacity=".7"/><circle cx="20" cy="20" r="4.5" stroke="currentColor" stroke-width="1.3" opacity=".5"/><path d="M20 4.5V2M20 38v-2.5M35.5 20H38M2 20h2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-  <h1>Stammenlijst Converter</h1>
-  <p>Deze demo is afgeschermd. Geef het wachtwoord in dat je ontving.</p>
+  <h1 data-t="title">Stammenlijst Converter</h1>
+  <p data-t="intro">Deze demo is afgeschermd. Geef het wachtwoord in dat je ontving.</p>
   <form id="f" autocomplete="off">
-    <label for="pw">Wachtwoord</label>
+    <label for="pw" data-t="pw">Wachtwoord</label>
     <input id="pw" type="password" autocomplete="current-password" required autofocus>
-    <button id="go" type="submit">Openen</button>
+    <label class="remember"><input type="checkbox" id="remember"> <span data-t="remember">Onthoud mij op dit toestel</span></label>
+    <button id="go" type="submit" data-t="open">Openen</button>
     <div class="error" id="err" role="alert"></div>
   </form>
-  <div class="fine">Je bestanden worden in je eigen browser verwerkt en nooit naar een server verstuurd.</div>
+  <div class="fine" data-t="fine">Je bestanden worden in je eigen browser verwerkt en nooit naar een server verstuurd.</div>
 </main>
 <script>
 // Decryption needs a secure context: send plain-http visitors to https first
@@ -62,11 +65,32 @@ if (location.protocol === "http:" && !["localhost", "127.0.0.1"].includes(locati
 }
 // The app below is AES-256-GCM encrypted with a key derived from the password (PBKDF2-SHA256).
 // Without the password the published page holds nothing readable; with it, the browser decrypts
-// the app and shows it in place of this login screen. The derived key is kept for this tab only.
+// the app and shows it in place of this login screen.
+// The derived key (never the password) is kept for this tab only, or — with "remember me" — in this
+// browser until the user signs out. Rebuilds with the same password keep the same salt, so a
+// remembered key keeps working; a new password makes it fail and the login screen returns.
 const PAYLOAD = /*__PAYLOAD__*/null;
-const SESSION_KEY = "stammenlijst:unlock:" + (PAYLOAD && PAYLOAD.id);
+const KEY_NAME = "stammenlijst:unlock";
 const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+// the login page follows the language last chosen in the app (default Dutch)
+let lang = "nl";
+try { if (localStorage.getItem("stammenlijst:lang") === "en") lang = "en"; } catch(e){}
+const TEXT = {
+  nl: { title:"Stammenlijst Converter", intro:"Deze demo is afgeschermd. Geef het wachtwoord in dat je ontving.", pw:"Wachtwoord",
+        remember:"Onthoud mij op dit toestel", open:"Openen", busy:"Bezig…", wrong:"Dat wachtwoord klopt niet.",
+        fine:"Je bestanden worden in je eigen browser verwerkt en nooit naar een server verstuurd." },
+  en: { title:"Tally List Converter", intro:"This demo is protected. Enter the password you received.", pw:"Password",
+        remember:"Remember me on this device", open:"Open", busy:"Working…", wrong:"That password is not correct.",
+        fine:"Your files are processed in your own browser and never sent to a server." }
+}[lang];
+document.documentElement.lang = lang;
+document.title = TEXT.title;
+document.querySelectorAll("[data-t]").forEach(el => { el.textContent = TEXT[el.dataset.t]; });
+
+function store(name){ try { return name==="local" ? localStorage : sessionStorage; } catch(e){ return null; } }
+function forgetKey(){ ["local","session"].forEach(n => { try { store(n).removeItem(KEY_NAME); } catch(e){} }); }
 
 async function decryptWith(key){
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(PAYLOAD.iv) }, key, b64d(PAYLOAD.ct));
@@ -80,36 +104,38 @@ function show(html){
   else window.addEventListener("load", swap, { once: true });
 }
 
-async function unlock(password){
+async function unlock(password, remember){
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
   const key = await crypto.subtle.deriveKey(
     { name: "PBKDF2", salt: b64d(PAYLOAD.salt), iterations: PAYLOAD.iter, hash: "SHA-256" },
     base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
   const html = await decryptWith(key); // throws on a wrong password
-  try { sessionStorage.setItem(SESSION_KEY, b64e(await crypto.subtle.exportKey("raw", key))); } catch(e){}
+  forgetKey();
+  try { store(remember ? "local" : "session").setItem(KEY_NAME, b64e(await crypto.subtle.exportKey("raw", key))); } catch(e){}
   show(html);
 }
 
 (async () => {
-  let saved = null;
-  try { saved = sessionStorage.getItem(SESSION_KEY); } catch(e){}
-  if (saved){
+  for (const where of ["session", "local"]){
+    let saved = null;
+    try { saved = store(where).getItem(KEY_NAME); } catch(e){}
+    if (!saved) continue;
     try {
       const key = await crypto.subtle.importKey("raw", b64d(saved), { name: "AES-GCM" }, false, ["decrypt"]);
       show(await decryptWith(key));
       return;
-    } catch(e){ try { sessionStorage.removeItem(SESSION_KEY); } catch(_){} }
+    } catch(e){ try { store(where).removeItem(KEY_NAME); } catch(_){} } // stale (password changed)
   }
 })();
 
 document.getElementById("f").addEventListener("submit", async e => {
   e.preventDefault();
   const btn = document.getElementById("go"), err = document.getElementById("err");
-  btn.disabled = true; btn.textContent = "Bezig…"; err.textContent = "";
-  try { await unlock(document.getElementById("pw").value); }
+  btn.disabled = true; btn.textContent = TEXT.busy; err.textContent = "";
+  try { await unlock(document.getElementById("pw").value, document.getElementById("remember").checked); }
   catch(x){
-    err.textContent = "Dat wachtwoord klopt niet.";
-    btn.disabled = false; btn.textContent = "Openen";
+    err.textContent = TEXT.wrong;
+    btn.disabled = false; btn.textContent = TEXT.open;
     document.getElementById("pw").select();
   }
 });
